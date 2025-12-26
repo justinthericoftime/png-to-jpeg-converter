@@ -19,9 +19,9 @@ env:
 
 jobs:
   build:
-    # Pin to macos-13 for stability (Intel architecture)
-    # Note: This produces x86_64 builds that run on Apple Silicon via Rosetta
-    runs-on: macos-13
+    # Use macos-latest (Apple Silicon) for native arm64 builds
+    # For Intel builds, use macos-15-intel instead
+    runs-on: macos-latest
     
     steps:
       - name: Checkout code

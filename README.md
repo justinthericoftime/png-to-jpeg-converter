@@ -30,7 +30,7 @@ A Python tool for batch converting PNG images to JPEG format with configurable q
 - Right-click the app and select "Open", then click "Open" in the dialog
 - Or go to System Preferences > Security & Privacy and click "Open Anyway"
 
-**Note:** The pre-built DMG is for Intel Macs (x86_64). It will run on Apple Silicon Macs via Rosetta 2.
+**Note:** The pre-built DMG is for Apple Silicon Macs (arm64). It will also run on Intel Macs if built locally.
 
 ### Building the macOS App Locally
 
