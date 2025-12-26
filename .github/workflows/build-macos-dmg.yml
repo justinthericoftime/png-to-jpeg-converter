@@ -1,0 +1,139 @@
+name: Build macOS DMG
+
+on:
+  # Manual trigger from GitHub UI
+  workflow_dispatch:
+  
+  # Auto-build on push to main
+  push:
+    branches: [main]
+    paths:
+      - 'png2jpg*.py'
+      - 'PNG2JPG.spec'
+      - 'requirements.txt'
+      - '.github/workflows/build-macos-dmg.yml'
+
+env:
+  APP_NAME: "PNG to JPEG Converter"
+  VERSION: "1.0.0"
+
+jobs:
+  build:
+    # Pin to macos-13 for stability (Intel architecture)
+    # Note: This produces x86_64 builds that run on Apple Silicon via Rosetta
+    runs-on: macos-13
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Verify Python and tkinter
+        run: |
+          python --version
+          echo "Verifying tkinter is available..."
+          python -c "import tkinter; import tkinter.ttk; print('tkinter OK')"
+          echo "Verifying PIL is importable after install..."
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pillow
+          echo "Verifying Pillow..."
+          python -c "from PIL import Image; print('Pillow OK')"
+      
+      - name: Build .app bundle with PyInstaller
+        run: |
+          echo "Building .app bundle..."
+          pyinstaller PNG2JPG.spec --clean --noconfirm
+          
+      - name: Verify .app was created
+        run: |
+          echo "Checking dist directory..."
+          ls -la dist/
+          if [ ! -d "dist/${APP_NAME}.app" ]; then
+            echo "ERROR: .app bundle was not created!"
+            exit 1
+          fi
+          echo ".app bundle created successfully!"
+          
+      - name: Install create-dmg
+        run: |
+          brew install create-dmg
+          
+      - name: Create DMG installer
+        run: |
+          echo "Creating DMG installer..."
+          DMG_NAME="PNG-to-JPEG-Converter-${VERSION}.dmg"
+          
+          # Create staging folder for DMG contents
+          # This approach is more reliable across create-dmg versions
+          mkdir -p dmg_staging
+          cp -R "dist/${APP_NAME}.app" "dmg_staging/"
+          ln -s /Applications "dmg_staging/Applications"
+          
+          # Build create-dmg arguments
+          CREATE_DMG_ARGS=(
+            --volname "${APP_NAME}"
+            --window-pos 200 120
+            --window-size 600 400
+            --icon-size 100
+            --icon "${APP_NAME}.app" 150 185
+            --hide-extension "${APP_NAME}.app"
+            --app-drop-link 450 185
+          )
+          
+          # Add volume icon if it exists
+          if [ -f "AppIcon.icns" ]; then
+            CREATE_DMG_ARGS+=(--volicon "AppIcon.icns")
+          fi
+          
+          # Try create-dmg first (may return non-zero even on success)
+          set +e
+          create-dmg "${CREATE_DMG_ARGS[@]}" "${DMG_NAME}" "dmg_staging/"
+          CREATE_DMG_EXIT=$?
+          set -e
+          
+          # Check if DMG was created
+          if [ ! -f "${DMG_NAME}" ]; then
+            echo "create-dmg did not produce DMG, using hdiutil fallback..."
+            hdiutil create -volname "${APP_NAME}" \
+              -srcfolder dmg_staging \
+              -ov -format UDZO \
+              "${DMG_NAME}"
+          fi
+          
+          # Clean up staging folder
+          rm -rf dmg_staging
+          
+          # Final verification
+          if [ ! -f "${DMG_NAME}" ]; then
+            echo "ERROR: DMG was not created!"
+            exit 1
+          fi
+          
+          echo "DMG created successfully!"
+          ls -la "${DMG_NAME}"
+          
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PNG-to-JPEG-Converter-macOS
+          path: PNG-to-JPEG-Converter-${{ env.VERSION }}.dmg
+          retention-days: 90
+          
+      - name: Build summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **App Name:** ${APP_NAME}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version:** ${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Architecture:** $(uname -m)" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS Version:** $(sw_vers -productVersion)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Version:** $(python --version)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the DMG from the Artifacts section below." >> $GITHUB_STEP_SUMMARY
